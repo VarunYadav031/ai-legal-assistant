@@ -10,7 +10,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# ---------------- SIDEBAR ----------------
 page = st.sidebar.radio(
     "Navigate",
     ["🏠 Home", "📄 Summarizer", "💬 Legal Chat"]
@@ -28,28 +27,26 @@ elif page == "📄 Summarizer":
     uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
     if uploaded_file:
+
         text = extract_text_from_pdf(uploaded_file)
 
         st.success("File processed successfully!")
 
         with st.expander("Preview"):
-            st.write(text[:3000])
+            st.write(text[:2000])
 
-        # ✅ RESET DOC STATE FOR NEW FILE
-        st.session_state["doc_added"] = False
+        if "doc_added" not in st.session_state:
+            st.session_state["doc_added"] = False
 
-        # ✅ ADD TO VECTOR STORE ONLY ONCE
-        if not st.session_state.get("doc_added", False):
+        if not st.session_state["doc_added"]:
             vs.add_documents([text])
             st.session_state["doc_added"] = True
 
-        # ---------------- SUMMARY ----------------
         if st.button("Generate Summary"):
             with st.spinner("Generating summary..."):
-                summary = summarize_legal_document(text)
+                summary = summarize_legal_document(text[:4000])
 
             st.success("Summary Ready!")
-
             st.write(summary)
 
             st.download_button(
@@ -61,9 +58,6 @@ elif page == "📄 Summarizer":
 # ---------------- CHAT ----------------
 elif page == "💬 Legal Chat":
     st.title("💬 Legal AI Chatbot (RAG)")
-
-    if not vs.docs:
-        st.warning("⚠️ Please upload a PDF first in Summarizer")
 
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
