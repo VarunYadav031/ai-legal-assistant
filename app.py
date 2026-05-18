@@ -5,8 +5,8 @@ from modules.summarizer import summarize_legal_document
 from modules.qa_chatbot import ask_question
 from modules.vector_store import vs
 
-# ✅ KEYPOINTS IMPORT (ADDED AS YOU ASKED)
 from modules.key_points import keypoint_extractor
+from modules.clause_explainer import clause_explainer
 
 
 # ---------------- PAGE CONFIG ----------------
@@ -16,7 +16,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-
 
 # ---------------- SIDEBAR ----------------
 page = st.sidebar.radio(
@@ -28,87 +27,127 @@ page = st.sidebar.radio(
 # ===================== HOME =====================
 if page == "🏠 Home":
     st.title("⚖️ AI Legal Assistant")
-    st.info("RAG + ChromaDB + Gemini + Keypoints Engine")
+    st.info("RAG + Smart Memory AI + Multilingual Support")
 
 
-# ===================== SUMMARIZER (UPDATED) =====================
+# ===================== SUMMARIZER =====================
 elif page == "📄 Summarizer":
 
-    st.title("📄 Document Analyzer (RAG + Keypoints)")
+    st.title("📄 Document Analyzer")
 
     uploaded_file = st.file_uploader("Upload PDF", type=["pdf"])
 
     if uploaded_file:
 
-        # ---------------- EXTRACT TEXT ----------------
         text = extract_text_from_pdf(uploaded_file)
-
         st.success("File loaded successfully!")
 
-        # ---------------- RAW PREVIEW ----------------
-        with st.expander("📄 Raw Text Preview"):
+        with st.expander("Preview"):
             st.write(text[:2000])
 
-        # ---------------- KEYPOINTS (NEW FEATURE) ----------------
-        st.subheader("🔥 Key Legal Points")
+        # Keypoints
+        st.subheader("🔥 Key Points")
+        keypoints = keypoint_extractor.extract_keypoints(text)
 
-        try:
-            keypoints = keypoint_extractor.extract_keypoints(text)
+        for i, point in enumerate(keypoints):
+            st.markdown(f"**{i+1}.** {point}")
 
-            if keypoints:
-                for i, point in enumerate(keypoints):
-                    st.markdown(f"**{i+1}.** {point}")
-            else:
-                st.warning("No key points found.")
+        # Clause Explainer
+        if keypoints:
+            st.subheader("🧠 Clause Explainer")
 
-        except Exception as e:
-            st.error(f"Keypoints error: {e}")
+            for i, clause in enumerate(keypoints[:5]):
+                result = clause_explainer.explain_clause(clause)
 
-        # ---------------- VECTOR STORE (FAST + ONCE ONLY) ----------------
+                st.markdown(f"### Clause {i+1}")
+                st.write(f"📌 Original: {result['original']}")
+                st.success(f"🧠 Simple: {result['simple']}")
+                st.info(f"Category: {result['category']}")
+
+        # Vector DB
         if "doc_id" not in st.session_state:
             st.session_state.doc_id = None
 
-        current_id = hash(text)
-
-        if st.session_state.doc_id != current_id:
+        if st.session_state.doc_id != hash(text):
             vs.add_documents([text])
-            st.session_state.doc_id = current_id
+            st.session_state.doc_id = hash(text)
 
-        # ---------------- SUMMARY ----------------
+        # Summary
         if st.button("Generate Summary"):
-
-            with st.spinner("Generating summary..."):
-
-                summary = summarize_legal_document(text[:3500])
-
-            st.subheader("📌 Summary")
+            summary = summarize_legal_document(text[:3500])
             st.write(summary)
-
-            st.download_button(
-                "Download Summary",
-                summary,
-                file_name="summary.txt"
-            )
+            st.download_button("Download", summary, file_name="summary.txt")
 
 
-# ===================== CHAT =====================
+# ===================== CHAT (FULL MULTILINGUAL + MEMORY) =====================
 elif page == "💬 Legal Chat":
 
-    st.title("💬 Legal AI Chatbot (RAG System)")
+    st.title("💬 Legal AI Chatbot")
 
-    if "chat_history" not in st.session_state:
-        st.session_state.chat_history = []
+    # ---------------- SESSION INIT ----------------
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-    user_question = st.text_input("Ask your legal question:")
+    if "language" not in st.session_state:
+        st.session_state.language = "hinglish"
 
-    if st.button("Ask") and user_question:
+    # ---------------- LANGUAGE SELECTOR ----------------
+    st.session_state.language = st.selectbox(
+        "Choose Language / भाषा चुनें",
+        ["hinglish", "hindi", "english"]
+    )
 
-        with st.spinner("Thinking..."):
+    # ---------------- LANGUAGE SWITCH DETECTOR ----------------
+    def detect_language_switch(text):
+        text = text.lower()
 
-            answer = ask_question(user_question)
+        if "switch to hindi" in text or "hindi" == text.strip():
+            return "hindi"
+        if "switch to english" in text or "english" == text.strip():
+            return "english"
+        if "hinglish" in text:
+            return "hinglish"
 
-        st.session_state.chat_history.append(("🧑 You", user_question))
-        st.session_state.chat_history.append(("⚖️ AI", answer))
+        return None
 
-    for role, msg in st.session_state.chat_history:
-        st.markdown(f"**{role}:** {msg}")
+    # ---------------- SHOW CHAT HISTORY ----------------
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+
+    # ---------------- INPUT ----------------
+    user_question = st.chat_input("Ask your legal question...")
+
+    if user_question:
+
+        # detect language switch
+        new_lang = detect_language_switch(user_question)
+        if new_lang:
+            st.session_state.language = new_lang
+            st.success(f"Language switched to {new_lang}")
+
+        # save user message
+        st.session_state.messages.append({
+            "role": "user",
+            "content": user_question
+        })
+
+        with st.chat_message("user"):
+            st.markdown(user_question)
+
+        # AI response
+        with st.chat_message("assistant"):
+            with st.spinner("Thinking..."):
+
+                answer = ask_question(
+                    user_question,
+                    chat_history=st.session_state.messages,
+                    language=st.session_state.language
+                )
+
+                st.markdown(answer)
+
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer
+        })
