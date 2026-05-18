@@ -1,6 +1,8 @@
 import streamlit as st
 from modules.extractor import extract_text_from_pdf
 from modules.summarizer import summarize_legal_document
+from modules.qa_chatbot import ask_question
+from modules.vector_store import vs
 
 st.set_page_config(
     page_title="AI Legal Assistant",
@@ -9,18 +11,15 @@ st.set_page_config(
 )
 
 # ---------------- SIDEBAR ----------------
-st.sidebar.title("⚖️ Legal AI Assistant")
 page = st.sidebar.radio(
     "Navigate",
-    ["🏠 Home", "📄 Summarizer", "💬 Chat (Coming Soon)"]
+    ["🏠 Home", "📄 Summarizer", "💬 Legal Chat"]
 )
 
 # ---------------- HOME ----------------
 if page == "🏠 Home":
     st.title("⚖️ AI Legal Document Assistant")
-    st.markdown("Upload legal documents and analyze them using AI.")
-
-    st.info("Built with Gemini + RAG + ChromaDB (Upgrading...)")
+    st.info("Built with Gemini + RAG + Vector DB + Streamlit")
 
 # ---------------- SUMMARIZER ----------------
 elif page == "📄 Summarizer":
@@ -33,20 +32,50 @@ elif page == "📄 Summarizer":
 
         st.success("File processed successfully!")
 
-        with st.expander("📑 Preview Text"):
+        with st.expander("Preview"):
             st.write(text[:3000])
 
-        if st.button("🚀 Generate Summary"):
-            with st.spinner("AI analyzing document..."):
+        # ✅ RESET DOC STATE FOR NEW FILE
+        st.session_state["doc_added"] = False
+
+        # ✅ ADD TO VECTOR STORE ONLY ONCE
+        if not st.session_state.get("doc_added", False):
+            vs.add_documents([text])
+            st.session_state["doc_added"] = True
+
+        # ---------------- SUMMARY ----------------
+        if st.button("Generate Summary"):
+            with st.spinner("Generating summary..."):
                 summary = summarize_legal_document(text)
 
             st.success("Summary Ready!")
 
-            st.markdown("### 🧠 AI Summary")
             st.write(summary)
 
             st.download_button(
-                "⬇️ Download Summary",
+                "Download",
                 summary,
-                file_name="legal_summary.txt"
+                file_name="summary.txt"
             )
+
+# ---------------- CHAT ----------------
+elif page == "💬 Legal Chat":
+    st.title("💬 Legal AI Chatbot (RAG)")
+
+    if not vs.docs:
+        st.warning("⚠️ Please upload a PDF first in Summarizer")
+
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
+
+    user_question = st.text_input("Ask your legal question:")
+
+    if st.button("Ask") and user_question:
+        with st.spinner("Thinking..."):
+            answer = ask_question(user_question)
+
+        st.session_state.chat_history.append(("🧑 You", user_question))
+        st.session_state.chat_history.append(("⚖️ AI", answer))
+
+    for role, msg in st.session_state.chat_history:
+        st.markdown(f"**{role}:** {msg}")

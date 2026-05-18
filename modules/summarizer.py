@@ -15,7 +15,7 @@ def summarize_legal_document(text: str) -> str:
     if not text:
         return "No text found"
 
-    text = text[:10000]  # safety limit
+    text = text[:10000]
 
     response = client.models.generate_content(
         model="gemini-2.5-flash",

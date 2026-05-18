@@ -22,3 +22,17 @@ def extract_text(file_path):
 
     else:
         raise ValueError("Unsupported file format")
+
+
+# ✅ WRAPPER FOR STREAMLIT COMPATIBILITY
+def extract_text_from_pdf(file):
+    """
+    Streamlit uploader support (file object)
+    """
+    reader = PdfReader(file)
+    text = ""
+
+    for page in reader.pages:
+        text += page.extract_text() or ""
+
+    return text
