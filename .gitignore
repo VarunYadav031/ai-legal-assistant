@@ -5,3 +5,6 @@ audio/
 chroma_db/
 __pycache__/
 *.pyc
+temp.wav
+temp_question.wav
+cache_store.json
