@@ -8,3 +8,4 @@ python-docx
 gtts
 python-dotenv
 streamlit-mic-recorder
+google-genai
