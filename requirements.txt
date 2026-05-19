@@ -1,13 +1,27 @@
 streamlit
+pandas
+
+# RAG core
 langchain
-langchain-openai
 langchain-community
-chromadb
+langchain-openai
+
+# Vector DB (choose stable combo)
+faiss-cpu
+
+# Embeddings
+sentence-transformers
+
+# File parsing
 pypdf
 python-docx
-gtts
-python-dotenv
-streamlit-mic-recorder
+
+# LLM APIs
+openai
 google-genai
-faiss-cpu
-sentence-transformers
+
+# Voice (optional UI)
+streamlit-mic-recorder
+
+# Utils
+python-dotenv
