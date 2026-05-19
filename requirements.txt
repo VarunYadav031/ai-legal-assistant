@@ -9,3 +9,4 @@ gtts
 python-dotenv
 streamlit-mic-recorder
 google-genai
+faiss-cpu
