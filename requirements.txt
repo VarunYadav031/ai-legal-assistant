@@ -7,3 +7,4 @@ pypdf
 python-docx
 gtts
 python-dotenv
+sreamlit-mic-recorder
