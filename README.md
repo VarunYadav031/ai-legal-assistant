@@ -5,7 +5,8 @@ An advanced AI-powered Legal Document Intelligence System that allows users to *
 ---
 
 ## 🚀 Live Demo
-> (Add your deployed Streamlit link here after deployment)
+## 🚀 Live Demo
+👉 [Open Live App](https://ai-legal-assistant-cfpatubjmrnhsbh8jszpmx.streamlit.app/)
 
 ---
 
