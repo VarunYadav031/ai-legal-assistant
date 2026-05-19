@@ -1,53 +1,93 @@
-import chromadb
-import hashlib
+import faiss
+import numpy as np
 from modules.embeddings import get_embedding
 
 
 class VectorStore:
+
     def __init__(self):
-        # ⚡ persistent DB (loaded once)
-        self.client = chromadb.PersistentClient(path="chroma_db")
-        self.collection = self.client.get_or_create_collection(
-            name="legal_docs"
-        )
+        self.docs = []
+        self.embeddings = []
+        self.index = None
 
-    # ---------------- ID GENERATION ----------------
-    def make_id(self, text):
-        return hashlib.md5(text.encode()).hexdigest()
+    # ---------------- ADD DOCUMENTS (SAFE + CLEAN) ----------------
+    def add(self, chunks):
 
-    # ---------------- FAST INSERT (NO DUPLICATES) ----------------
-    def add_documents(self, texts):
-        if isinstance(texts, str):
-            texts = [texts]
+        if not chunks:
+            return
 
-        for text in texts:
-            doc_id = self.make_id(text)
+        for chunk in chunks:
+            try:
+                emb = get_embedding(chunk)
 
-            # ⚡ skip if already exists (VERY IMPORTANT)
-            existing = self.collection.get(ids=[doc_id])
-            if existing and existing.get("ids"):
+                if emb is None or len(emb) == 0:
+                    continue
+
+                self.docs.append(chunk)
+                self.embeddings.append(emb)
+
+            except Exception as e:
+                print("Embedding error in vector store:", e)
                 continue
 
-            emb = get_embedding(text)
+        self._build_index()
 
-            self.collection.add(
-                documents=[text],
-                embeddings=[emb],
-                ids=[doc_id]
-            )
+    # ---------------- BUILD INDEX (SAFE + RESET FIX) ----------------
+    def _build_index(self):
 
-    # ---------------- FAST SEARCH ----------------
-    def search(self, query, n_results=4):
-        query_emb = get_embedding(query)
+        if len(self.embeddings) == 0:
+            return
 
-        results = self.collection.query(
-            query_embeddings=[query_emb],
-            n_results=n_results,
-            include=["documents"]
-        )
+        try:
+            vectors = np.array(self.embeddings).astype("float32")
 
-        return results["documents"][0] if results["documents"] else []
+            if len(vectors.shape) != 2:
+                print("Invalid embedding shape:", vectors.shape)
+                return
+
+            dim = vectors.shape[1]
+
+            # 🔥 IMPORTANT FIX: reset index before rebuild
+            self.index = faiss.IndexFlatL2(dim)
+
+            # normalize vectors for better semantic search
+            faiss.normalize_L2(vectors)
+
+            self.index.add(vectors)
+
+        except Exception as e:
+            print("FAISS build error:", e)
+            self.index = None
+
+    # ---------------- SEARCH (IMPROVED + SAFE) ----------------
+    def search(self, query, n_results=5):
+
+        if not query or not isinstance(query, str):
+            return []
+
+        if self.index is None or len(self.docs) == 0:
+            return []
+
+        try:
+            query_vec = np.array(get_embedding(query)).astype("float32").reshape(1, -1)
+
+            # normalize query vector (IMPORTANT FIX)
+            faiss.normalize_L2(query_vec)
+
+            distances, indices = self.index.search(query_vec, n_results)
+
+            results = []
+
+            for i in indices[0]:
+                if 0 <= i < len(self.docs):
+                    results.append(self.docs[i])
+
+            return results
+
+        except Exception as e:
+            print("Vector search error:", e)
+            return []
 
 
-# global instance (created once)
+# ---------------- GLOBAL INSTANCE ----------------
 vs = VectorStore()

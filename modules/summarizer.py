@@ -1,38 +1,71 @@
 import os
-from dotenv import load_dotenv
 from google import genai
 
-load_dotenv()
+api_key = os.getenv("GEMINI_API_KEY")
+client = genai.Client(api_key=api_key) if api_key else None
 
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+def offline_summary():
+    return "⚠️ AI temporarily unavailable (quota / API issue)."
 
 
-def summarize_legal_document(text: str) -> str:
-    """
-    Legal document summarizer using Gemini
-    """
+def call_gemini(prompt):
 
-    if not text:
-        return "No text found"
+    if not client:
+        print("❌ No API key found")
+        return None
 
-    text = text[:10000]
+    models = [
+        "gemini-2.0-flash",
+        "gemini-1.5-flash"
+    ]
 
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=f"""
-You are a professional legal AI assistant.
+    for model in models:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=prompt
+            )
 
-Summarize this legal document in simple terms:
+            # SAFE HANDLING
+            if response and hasattr(response, "text") and response.text:
+                return response.text.strip()
 
-1. Parties involved
-2. Key clauses
-3. Obligations
-4. Risks
-5. Simple explanation for non-lawyers
+        except Exception as e:
+            print(f"❌ Model failed ({model}):", str(e))
 
-Document:
+    return None
+
+
+def summarize_legal_document(text: str, style="simple", language="english"):
+
+    if not text or len(text.strip()) < 50:
+        return "❌ No sufficient document text found"
+
+    if not client:
+        return "❌ GEMINI_API_KEY missing"
+
+    text = text[:8000]  # safer limit
+
+    prompt = f"""
+You are a legal document summarizer.
+
+STYLE: {style}
+LANGUAGE: {language}
+
+RULES:
+- Only use document
+- Do not hallucinate
+- Be structured
+
+DOCUMENT:
 {text}
 """
-    )
 
-    return response.text
+    result = call_gemini(prompt)
+
+    if not result:
+        print("⚠️ Gemini returned empty response")
+        return offline_summary()
+
+    return result

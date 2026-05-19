@@ -2,72 +2,117 @@ import os
 from google import genai
 from modules.vector_store import vs
 
-api_key = os.getenv("GEMINI_API_KEY")
+# ✅ CACHE SYSTEM
+from modules.cache import make_key, get_cache, set_cache
 
+
+api_key = os.getenv("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else None
 
 
-# ---------------- MAIN AI FUNCTION ----------------
-def ask_question(question: str, chat_history=None, language="hinglish"):
+# ---------------- OFFLINE FALLBACK ----------------
+def offline_fallback(question):
+    return (
+        "⚠️ AI temporarily unavailable.\n\n"
+        "Please try again later or rephrase your question."
+    )
 
-    # RAG
-    context_chunks = vs.search(question, n_results=4)
-    context_text = "\n".join(context_chunks) if context_chunks else ""
 
-    # MEMORY
+# ---------------- GEMINI CALL (FIXED + DEBUG) ----------------
+def call_gemini(prompt):
+
+    if not client:
+        print("❌ Client not initialized (API key missing)")
+        return None
+
+    # 🔥 ONLY STABLE MODEL (FIX FOR YOUR ISSUE)
+    models = [
+        "gemini-2.0-flash"
+    ]
+
+    for model in models:
+        try:
+            res = client.models.generate_content(
+                model=model,
+                contents=prompt
+            )
+
+            # 🔍 DEBUG LOG (IMPORTANT)
+            print(f"Model used: {model}")
+            print("Response received:", bool(res and res.text))
+
+            if res and res.text and res.text.strip():
+                return res.text.strip()
+
+        except Exception as e:
+            print(f"❌ Gemini error ({model}):", str(e))
+            continue
+
+    return None
+
+
+# ---------------- MAIN FUNCTION ----------------
+def ask_question(question, chat_history=None, language="hinglish"):
+
+    # ================= CACHE CHECK =================
+    cache_key = make_key(question)
+    cached = get_cache(cache_key)
+
+    if cached:
+        return cached + "\n\n⚡ (cached response)"
+
+    # ================= VECTOR SEARCH =================
+    context = vs.search(question, n_results=5)
+
+    context_text = "\n\n".join(context) if context else "No relevant context found in document."
+
+    # ================= CHAT MEMORY =================
     memory_text = ""
     if chat_history:
         memory_text = "\n".join(
-            [f"{m['role']}: {m['content']}" for m in chat_history[-6:]]
+            [f"{m['role']}: {m['content']}" for m in chat_history[-4:]]
         )
 
-    # LANGUAGE CONTROL
-    if language == "hindi":
-        lang_rule = "Answer ONLY in Hindi."
-    elif language == "english":
-        lang_rule = "Answer ONLY in English."
-    else:
-        lang_rule = "Answer in Hinglish (Hindi + English mix)."
+    # ================= LANGUAGE RULE =================
+    lang_rule = {
+        "hindi": "Answer ONLY in Hindi.",
+        "english": "Answer ONLY in English.",
+        "hinglish": "Answer in simple Hinglish."
+    }.get(language, "Answer in Hinglish.")
 
+    # ================= PROMPT =================
     prompt = f"""
-You are a Legal AI Assistant.
+You are a strict legal document AI assistant.
+
+RULES:
+- Use ONLY provided context
+- If answer not found → say "Not mentioned in document"
+- Do NOT use outside knowledge
+- Be short and precise
 
 {lang_rule}
 
-Rules:
-- Do not copy full document
-- Be simple and clear
-
-Conversation Memory:
+CHAT HISTORY:
 {memory_text}
 
-Document Context:
+CONTEXT:
 {context_text}
 
-Question:
+QUESTION:
 {question}
 
-Answer:
+ANSWER:
 """
 
-    # ---------------- GEMINI ----------------
-    if client:
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt
-            )
-            return response.text
-        except:
-            pass
+    # ================= AI RESPONSE =================
+    answer = call_gemini(prompt)
 
-    # ---------------- FALLBACK ----------------
-    q = question.lower()
+    # ================= IMPORTANT FIX (EMPTY RESPONSE SAFETY) =================
+    if not answer or answer.strip() == "":
+        print("⚠️ Empty response from Gemini")
+        answer = offline_fallback(question)
 
-    if language == "hindi":
-        return "📌 दस्तावेज़ के अनुसार कर्मचारी को कॉन्ट्रैक्ट के नियम मानने होते हैं।"
+    # ================= SAVE CACHE =================
+    set_cache(cache_key, answer)
 
-    if language == "english":
-        return "📌 Employee must follow contract terms and maintain confidentiality."
-
-    return "📌 Employee ko contract ke rules follow karne hote hain aur confidential info protect karni hoti hai."
+    return answer
