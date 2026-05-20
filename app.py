@@ -221,3 +221,8 @@ elif page == "💬 Legal Chat":
 
     if user_input:
         process_question(user_input)
+    
+try:
+    st.write("API key found:", bool(st.secrets["GEMINI_API_KEY"]))
+except Exception:
+    st.write("API key found:", False)
